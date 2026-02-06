@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FG Traceability Scanner</title>
+<style>
+body{font-family:Arial;text-align:center;padding:15px;background:#f4f6f8}
+button{padding:14px 18px;margin:6px;font-size:15px;border-radius:10px;border:none;background:#1976d2;color:white}
+#result{margin-top:15px;font-size:18px;padding:15px;border-radius:12px;background:white;min-height:120px}
+video{width:100%;max-width:420px;border-radius:12px;margin-top:10px}
+.alert{background:#ffcccc}
+.ok{background:#ccffd8}
+table{width:100%;margin-top:15px;border-collapse:collapse;background:white}
+th,td{border:1px solid #ddd;padding:6px;font-size:13px}
+</style>
+</head>
+<body>
+
+<h2>FG Quality & Traceability</h2>
+
+<button onclick="startCamera()">Scan Kamera</button>
+<button onclick="document.getElementById('fileInput').click()">Scan dari File</button>
+<button onclick="exportCSV()">Download Excel</button>
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+
+<br>
+<video id="video" autoplay></video>
+<div id="result">Menunggu scan...</div>
+
+<table id="history">
+<tr><th>Waktu</th><th>Barcode</th><th>Tahun</th><th>Bulan</th><th>Area</th><th>Umur</th><th>Status</th></tr>
+</table>
+
+<script>
+let historyData=[];
+
+const months={A:'Januari',B:'Februari',C:'Maret',D:'April',E:'Mei',F:'Juni',G:'Juli',H:'Agustus',J:'September',K:'Oktober',L:'November',M:'Desember'};
+const areas={J:'NCR',X:'PM10'};
+
+function yearFromCode(c){
+ const start=2022;
+ const code="ABCDEFGHJKLMNPQRSTUVWXYZ";
+ return start+code.indexOf(c);
+}
+
+function addHistory(obj){
+ historyData.push(obj);
+ let table=document.getElementById("history");
+ let row=table.insertRow(-1);
+ Object.values(obj).forEach(v=>{
+  let cell=row.insertCell();
+  cell.innerText=v;
+ });
+}
+
+function analyze(text){
+ let code=text.substring(0,3);
+ let y=yearFromCode(code[0]);
+ let m=months[code[1]]||"Unknown";
+ let a=areas[code[2]]||"Unknown";
+
+ let prod=new Date(y,Object.keys(months).indexOf(code[1]),1);
+ let now=new Date();
+ let age=(now-prod)/(1000*60*60*24*365);
+ let status=age>1?'ALARM':'OK';
+
+ let box=document.getElementById('result');
+ box.className=status=='ALARM'?'alert':'ok';
+ box.innerHTML=`<b>${text}</b><br>${m} ${y} - ${a}<br>Umur ${age.toFixed(2)} th<br><h3>${status}</h3>`;
+
+ addHistory({
+  waktu:new Date().toLocaleString(),
+  barcode:text,
+  tahun:y,
+  bulan:m,
+  area:a,
+  umur:age.toFixed(2),
+  status:status
+ });
+
+ setTimeout(()=>box.innerHTML="Menunggu scan...",9000);
+}
+
+async function startCamera(){
+ if(!('BarcodeDetector'in window)){alert("Browser tidak support");return;}
+ const video=document.getElementById('video');
+ const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+ video.srcObject=stream;
+ const detector=new BarcodeDetector({formats:['code_128','qr_code']});
+ const scan=async()=>{
+  const barcodes=await detector.detect(video);
+  if(barcodes.length>0){analyze(barcodes[0].rawValue);}
+  requestAnimationFrame(scan);
+ };
+ scan();
+}
+
+document.getElementById('fileInput').addEventListener('change',async e=>{
+ const file=e.target.files[0];
+ const img=await createImageBitmap(file);
+ const detector=new BarcodeDetector({formats:['code_128','qr_code']});
+ const barcodes=await detector.detect(img);
+ if(barcodes.length>0) analyze(barcodes[0].rawValue);
+ else alert("Barcode tidak terbaca");
+});
+
+function exportCSV(){
+ let csv="Waktu,Barcode,Tahun,Bulan,Area,Umur,Status\n";
+ historyData.forEach(r=>{
+  csv+=`${r.waktu},${r.barcode},${r.tahun},${r.bulan},${r.area},${r.umur},${r.status}\n`;
+ });
+ let blob=new Blob([csv],{type:"text/csv"});
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download="FG_Inspection.csv";
+ a.click();
+}
+</script>
+
+</body>
+</html>
