@@ -3,6 +3,7 @@
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FG Traceability Scanner</title>
+<script src="https://unpkg.com/@zxing/library@latest"></script>
 <style>
 body{font-family:Arial;text-align:center;padding:15px;background:#f4f6f8}
 button{padding:14px 18px;margin:6px;font-size:15px;border-radius:10px;border:none;background:#1976d2;color:white}
@@ -24,7 +25,7 @@ th,td{border:1px solid #ddd;padding:6px;font-size:13px}
 <input type="file" id="fileInput" accept="image/*" style="display:none">
 
 <br>
-<video id="video" autoplay></video>
+<video id="video"></video>
 <div id="result">Menunggu scan...</div>
 
 <table id="history">
@@ -33,6 +34,7 @@ th,td{border:1px solid #ddd;padding:6px;font-size:13px}
 
 <script>
 let historyData=[];
+const codeReader = new ZXing.BrowserMultiFormatReader();
 
 const months={A:'Januari',B:'Februari',C:'Maret',D:'April',E:'Mei',F:'Juni',G:'Juli',H:'Agustus',J:'September',K:'Oktober',L:'November',M:'Desember'};
 const areas={J:'NCR',X:'PM10'};
@@ -82,26 +84,20 @@ function analyze(text){
 }
 
 async function startCamera(){
- if(!('BarcodeDetector'in window)){alert("Browser tidak support");return;}
  const video=document.getElementById('video');
- const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
- video.srcObject=stream;
- const detector=new BarcodeDetector({formats:['code_128','qr_code']});
- const scan=async()=>{
-  const barcodes=await detector.detect(video);
-  if(barcodes.length>0){analyze(barcodes[0].rawValue);}
-  requestAnimationFrame(scan);
- };
- scan();
+ const devices=await codeReader.listVideoInputDevices();
+ const deviceId=devices[devices.length-1].deviceId;
+ codeReader.decodeFromVideoDevice(deviceId, video, (result, err)=>{
+  if(result) analyze(result.getText());
+ });
 }
 
 document.getElementById('fileInput').addEventListener('change',async e=>{
  const file=e.target.files[0];
- const img=await createImageBitmap(file);
- const detector=new BarcodeDetector({formats:['code_128','qr_code']});
- const barcodes=await detector.detect(img);
- if(barcodes.length>0) analyze(barcodes[0].rawValue);
- else alert("Barcode tidak terbaca");
+ const imgURL=URL.createObjectURL(file);
+ codeReader.decodeFromImageUrl(imgURL)
+ .then(res=>analyze(res.getText()))
+ .catch(()=>alert("Barcode tidak terbaca"));
 });
 
 function exportCSV(){
