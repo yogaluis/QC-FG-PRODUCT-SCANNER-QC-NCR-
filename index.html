@@ -1,117 +1,108 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FG Traceability Scanner</title>
-<script src="https://unpkg.com/@zxing/library@latest"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QC FG Scanner</title>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
-body{font-family:Arial;text-align:center;padding:15px;background:#f4f6f8}
-button{padding:14px 18px;margin:6px;font-size:15px;border-radius:10px;border:none;background:#1976d2;color:white}
-#result{margin-top:15px;font-size:18px;padding:15px;border-radius:12px;background:white;min-height:120px}
-video{width:100%;max-width:420px;border-radius:12px;margin-top:10px}
-.alert{background:#ffcccc}
-.ok{background:#ccffd8}
-table{width:100%;margin-top:15px;border-collapse:collapse;background:white}
-th,td{border:1px solid #ddd;padding:6px;font-size:13px}
+body{font-family:Arial,Helvetica,sans-serif;background:#0f172a;color:white;text-align:center;padding:15px}
+#reader{width:100%;max-width:420px;margin:auto}
+.card{margin-top:15px;padding:18px;border-radius:14px;font-size:18px}
+.good{background:#065f46}
+.bad{background:#7f1d1d}
+.title{font-size:22px;font-weight:bold;margin-bottom:10px}
+input{padding:12px;font-size:16px;border-radius:10px;border:none;width:80%;max-width:320px;margin-top:10px}
+button{padding:12px 18px;margin:6px;font-size:16px;border-radius:10px;border:none}
 </style>
 </head>
 <body>
-
 <h2>FG Quality & Traceability</h2>
+<div id="reader"></div>
+<div id="result"></div>
 
-<button onclick="startCamera()">Scan Kamera</button>
-<button onclick="document.getElementById('fileInput').click()">Scan dari File</button>
-<button onclick="exportCSV()">Download Excel</button>
-<input type="file" id="fileInput" accept="image/*" style="display:none">
-
+<div style="margin-top:15px">
+<input id="manualCode" placeholder="Input kode manual...">
 <br>
-<video id="video"></video>
-<div id="result">Menunggu scan...</div>
-
-<table id="history">
-<tr><th>Waktu</th><th>Barcode</th><th>Tahun</th><th>Bulan</th><th>Area</th><th>Umur</th><th>Status</th></tr>
-</table>
+<button onclick="manualSubmit()">Input Manual</button>
+</div>
 
 <script>
-let historyData=[];
-const codeReader = new ZXing.BrowserMultiFormatReader();
+const yearMap={A:2022,B:2023,C:2024,D:2025,E:2026,F:2027,G:2028,H:2029,J:2030,K:2031,L:2032};
+const monthMap={A:"Januari",B:"Februari",C:"Maret",D:"April",E:"Mei",F:"Juni",G:"Juli",H:"Agustus",J:"September",K:"Oktober",L:"November",M:"Desember"};
+const areaMap={J:"NCR",X:"PM10"};
 
-const months={A:'Januari',B:'Februari',C:'Maret',D:'April',E:'Mei',F:'Juni',G:'Juli',H:'Agustus',J:'September',K:'Oktober',L:'November',M:'Desember'};
-const areas={J:'NCR',X:'PM10'};
+let locked=false;
 
-function yearFromCode(c){
- const start=2022;
- const code="ABCDEFGHJKLMNPQRSTUVWXYZ";
- return start+code.indexOf(c);
+function decode(code){
+let prefix=code.substring(0,3).toUpperCase();
+let y=yearMap[prefix[0]]||"Unknown";
+let mName=monthMap[prefix[1]]||"Unknown";
+let mIndex=Object.keys(monthMap).indexOf(prefix[1])+1;
+let area=areaMap[prefix[2]]||"Unknown";
+
+let now=new Date();
+let prod=new Date(y,mIndex-1,1);
+
+let diffDays=Math.floor((now-prod)/(1000*60*60*24));
+let years=Math.floor(diffDays/365);
+let months=Math.floor((diffDays%365)/30);
+let days=diffDays%30;
+
+let umurText="";
+if(diffDays<30) umurText=`${diffDays} hari`;
+else umurText=`${months} bulan ${days} hari`;
+
+let status=years>=1?"bad":"good";
+let text=years>=1?"EXPIRED":"DAPAT DIKIRIM";
+
+return{y,mName,area,umurText,status,text};
 }
 
-function addHistory(obj){
- historyData.push(obj);
- let table=document.getElementById("history");
- let row=table.insertRow(-1);
- Object.values(obj).forEach(v=>{
-  let cell=row.insertCell();
-  cell.innerText=v;
- });
+function showResult(code){
+if(!code) return;
+let d=decode(code);
+let el=document.getElementById("result");
+el.innerHTML=`<div class='card ${d.status}'>
+<div class='title'>${d.text}</div>
+Kode : ${code}<br><br>
+Tahun : ${d.y}<br>
+Bulan : ${d.mName}<br>
+Area : ${d.area}<br><br>
+Umur : ${d.umurText}
+</div>`;
 }
 
-function analyze(text){
- let code=text.substring(0,3);
- let y=yearFromCode(code[0]);
- let m=months[code[1]]||"Unknown";
- let a=areas[code[2]]||"Unknown";
-
- let prod=new Date(y,Object.keys(months).indexOf(code[1]),1);
- let now=new Date();
- let age=(now-prod)/(1000*60*60*24*365);
- let status=age>1?'ALARM':'OK';
-
- let box=document.getElementById('result');
- box.className=status=='ALARM'?'alert':'ok';
- box.innerHTML=`<b>${text}</b><br>${m} ${y} - ${a}<br>Umur ${age.toFixed(2)} th<br><h3>${status}</h3>`;
-
- addHistory({
-  waktu:new Date().toLocaleString(),
-  barcode:text,
-  tahun:y,
-  bulan:m,
-  area:a,
-  umur:age.toFixed(2),
-  status:status
- });
-
- setTimeout(()=>box.innerHTML="Menunggu scan...",9000);
+function manualSubmit(){
+let val=document.getElementById("manualCode").value.trim();
+if(val.length<3){alert("Kode tidak valid");return;}
+showResult(val);
 }
 
-async function startCamera(){
- const video=document.getElementById('video');
- const devices=await codeReader.listVideoInputDevices();
- const deviceId=devices[devices.length-1].deviceId;
- codeReader.decodeFromVideoDevice(deviceId, video, (result, err)=>{
-  if(result) analyze(result.getText());
- });
-}
-
-document.getElementById('fileInput').addEventListener('change',async e=>{
- const file=e.target.files[0];
- const imgURL=URL.createObjectURL(file);
- codeReader.decodeFromImageUrl(imgURL)
- .then(res=>analyze(res.getText()))
- .catch(()=>alert("Barcode tidak terbaca"));
+const scanner=new Html5Qrcode("reader");
+Html5Qrcode.getCameras().then(devices=>{
+scanner.start(devices[0].id,{fps:10,qrbox:250},(txt)=>showResult(txt));
 });
-
-function exportCSV(){
- let csv="Waktu,Barcode,Tahun,Bulan,Area,Umur,Status\n";
- historyData.forEach(r=>{
-  csv+=`${r.waktu},${r.barcode},${r.tahun},${r.bulan},${r.area},${r.umur},${r.status}\n`;
- });
- let blob=new Blob([csv],{type:"text/csv"});
- let a=document.createElement("a");
- a.href=URL.createObjectURL(blob);
- a.download="FG_Inspection.csv";
- a.click();
-}
 </script>
 
+<div style="position:fixed;bottom:20px;left:0;right:0;text-align:center;z-index:9999;">
+  <button onclick="location.reload()">Scan Kamera</button>
+  <button id="fileBtn">Scan dari File</button>
+  <input type="file" id="fileInput" accept="image/*" style="display:none">
+</div>
+
+<script>
+const fileInput=document.getElementById('fileInput');
+document.getElementById('fileBtn').onclick=()=>fileInput.click();
+fileInput.addEventListener('change', async (e)=>{
+ const file=e.target.files[0];
+ if(!file) return;
+ try{
+  const html5QrCode=new Html5Qrcode("reader");
+  const result=await html5QrCode.scanFile(file,true);
+  showResult(result);
+ }catch{alert('Barcode tidak terbaca');}
+});
+</script>
 </body>
 </html>
